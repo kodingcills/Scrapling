@@ -1,0 +1,8 @@
+# The tailored Scrapling fork MUST be installed first so the `scrapling`
+# requirement in pyproject.toml resolves to this editable checkout instead of
+# stock PyPI Scrapling:
+#
+#   pip install -r requirements.txt
+#   pip install -e .
+#
+-e ../scrapling[all]

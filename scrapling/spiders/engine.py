@@ -69,6 +69,8 @@ class CrawlerEngine:
                     self.spider.autothrottle_target_concurrency or self.spider.concurrent_requests_per_domain or 1.0
                 ),
                 block_backoff=self.spider.autothrottle_block_backoff,
+                block_backoff_factor=getattr(self.spider, "autothrottle_block_backoff_factor", 2.0),
+                jitter=getattr(self.spider, "autothrottle_jitter", 0.0),
             )
         else:
             self._autothrottle = None
@@ -106,12 +108,14 @@ class CrawlerEngine:
     async def _get_domain_delay(self, request: Request) -> float:
         """Resolve the effective download delay for a domain.
 
-        Takes the max of the spider's configured delay and any robots.txt
-        directives (Crawl-delay / Request-rate). Result is cached per domain.
+        Takes the max of the spider's configured delay, the spider's
+        `robots_crawl_delay_floor`, and any robots.txt directives
+        (Crawl-delay / Request-rate). Result is cached per domain.
         """
+        crawl_delay_floor = getattr(self.spider, "robots_crawl_delay_floor", 0.0)
         robots_manager = self._robots_manager
         if robots_manager is None:
-            return self.spider.download_delay
+            return max(self.spider.download_delay, crawl_delay_floor)
 
         domain = request.domain
 
@@ -122,7 +126,7 @@ class CrawlerEngine:
         # Domains discovered mid-crawl (not in start_urls) will fetch here.
         c_delay, r_rate = await robots_manager.get_delay_directives(request.url, request.sid)
 
-        delay = self.spider.download_delay
+        delay = max(self.spider.download_delay, crawl_delay_floor)
 
         if r_rate:
             req_count, period = r_rate
@@ -192,7 +196,7 @@ class CrawlerEngine:
                 return
             floor = await self._get_domain_delay(request)
         else:
-            floor = self.spider.download_delay
+            floor = max(self.spider.download_delay, getattr(self.spider, "robots_crawl_delay_floor", 0.0))
 
         delay = floor
 
@@ -212,7 +216,8 @@ class CrawlerEngine:
 
         async with self._rate_limiter(request.domain):
             if self._autothrottle:
-                delay = self._autothrottle.delay_for(request.domain, floor)
+                # Jittered copy for the sleep; learned delays stay exact
+                delay = self._autothrottle.sample_delay(request.domain, floor)
 
             if delay:
                 await anyio.sleep(delay)

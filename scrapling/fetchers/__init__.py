@@ -5,6 +5,7 @@ if TYPE_CHECKING:
     from scrapling.fetchers.requests import Fetcher, AsyncFetcher, FetcherSession
     from scrapling.fetchers.chrome import DynamicFetcher, DynamicSession, AsyncDynamicSession
     from scrapling.fetchers.stealth_chrome import StealthyFetcher, StealthySession, AsyncStealthySession
+    from scrapling.fetchers.lead_engine import LeadEngineFetcher
 
 
 # Lazy import mapping
@@ -18,6 +19,7 @@ _LAZY_IMPORTS = {
     "StealthyFetcher": ("scrapling.fetchers.stealth_chrome", "StealthyFetcher"),
     "StealthySession": ("scrapling.fetchers.stealth_chrome", "StealthySession"),
     "AsyncStealthySession": ("scrapling.fetchers.stealth_chrome", "AsyncStealthySession"),
+    "LeadEngineFetcher": ("scrapling.fetchers.lead_engine", "LeadEngineFetcher"),
 }
 
 __all__ = [
@@ -31,6 +33,7 @@ __all__ = [
     "StealthyFetcher",
     "StealthySession",
     "AsyncStealthySession",
+    "LeadEngineFetcher",
 ]
 
 

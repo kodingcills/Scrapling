@@ -1,6 +1,7 @@
-from scrapling.core._types import Unpack
+from scrapling.core._types import Any, Dict, Unpack
 from scrapling.engines._browsers._types import StealthSession
 from scrapling.engines.toolbelt.custom import BaseFetcher, Response
+from scrapling.engines.toolbelt.profiles import POLITE_BROWSING_PROFILE, merge_profile
 from scrapling.engines._browsers._stealth import StealthySession, AsyncStealthySession
 
 
@@ -8,10 +9,17 @@ class StealthyFetcher(BaseFetcher):
     """A `Fetcher` class type which is a completely stealthy built on top of Chromium.
 
     It works as real browsers passing almost all online tests/protections with many customization options.
+
+    Subclasses can set the `profile` class attribute to a dictionary of default
+    fetch/session keyword arguments; explicit call arguments always win. See
+    `scrapling.engines.toolbelt.profiles` for ready-made profiles.
     """
+
+    profile: Dict[str, Any] = dict(POLITE_BROWSING_PROFILE)
 
     @classmethod
     def fetch(cls, url: str, **kwargs: Unpack[StealthSession]) -> Response:
+        kwargs = merge_profile(kwargs, cls.profile)
         """
         Opens up a browser and do your request based on your chosen options below.
 
@@ -103,6 +111,7 @@ class StealthyFetcher(BaseFetcher):
         :param additional_args: Additional arguments to be passed to Playwright's context as additional settings, and it takes higher priority than Scrapling's settings.
         :return: A `Response` object.
         """
+        kwargs = merge_profile(kwargs, cls.profile)
         selector_config = kwargs.get("selector_config", {}) or kwargs.get(
             "custom_config", {}
         )  # Checking `custom_config` for backward compatibility

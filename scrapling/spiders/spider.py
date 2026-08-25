@@ -85,12 +85,20 @@ class Spider(ABC):
     download_delay: float = 0.0
     max_blocked_retries: int = 3
 
+    # Robots.txt compliance
+    # Hard floor (seconds) applied to every domain's effective delay, even when
+    # its robots.txt specifies no Crawl-delay at all. Useful when crawling small
+    # sites that aren't used to any traffic.
+    robots_crawl_delay_floor: float = 0.0
+
     # AutoThrottle settings
     autothrottle_enabled: bool = False
     autothrottle_start_delay: float = 5.0
     autothrottle_max_delay: float = 60.0
     autothrottle_target_concurrency: Optional[float] = None
     autothrottle_block_backoff: bool = True
+    autothrottle_block_backoff_factor: float = 2.0
+    autothrottle_jitter: float = 0.0
 
     # Fingerprint adjustments
     fp_include_kwargs: bool = False

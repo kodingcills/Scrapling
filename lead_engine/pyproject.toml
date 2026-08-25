@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "lead-engine"
+version = "0.1.0"
+description = "Lead-gen scraping toolkit (career pages, integrator directories, team pages, Notion sync) built on the tailored Scrapling fork."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    # The tailored local fork of D4Vinci/Scrapling. Install order matters:
+    # `pip install -e ../scrapling[all]` first (see requirements.txt); this
+    # entry only asserts the version floor so pip never falls back to PyPI.
+    "scrapling>=0.4.15",
+    "requests>=2.31",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["lead_engine*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

@@ -1,0 +1,8 @@
+[
+  {
+    "url": "https://app.hubspot.com/api/livechat-public/v1/bots/public/bot/1626674/welcomeMessages?hs_static_app=conversations-visitor-ui&hs_static_app_version=1.30692&conversations-visitor-ui=static-1.30692&traceId=c8efb360398e45a9bd1d130d0d96e015&sessionId=AMOaWbJ-i8JAp_IWXG-pq9mgNmcWKhF9EpdGf3l2IKbFus5BBT9iDkNJsNJVOo10eRY0HNR4saC57AcIxNSz-H7gg20hb8oRecI4pPogvOWBOiLQ2OqR95m8P92bsfeb1RXp12JnpXXSy9lHEQ2C3QJN9f68hRKYjRwxbOW4mUHRFgVmLt9IPpo",
+    "status": 200,
+    "content_type": "application/json;charset=utf-8",
+    "body": "[{\"message\":{\"@type\":\"INITIAL_MESSAGE\",\"id\":\"26cdf64f-a28f-45d1-a84b-0a8ebc577374\",\"timestamp\":1788702584035,\"echo\":false,\"messageDeletedStatus\":\"NOT_DELETED\",\"attachments\":[{\"@type\":\"QUICK_REPLIES\",\"quickReplies\":[{\"value\":\"Yes\",\"label\":\"Yes\",\"valueType\":\"TEXT\"},{\"value\":\"No\",\"label\":\"No\",\"valueType\":\"TEXT\"}],\"allowUserInput\":false,\"allowMultiSelect\":false}],\"senders\":[{\"actorId\":\"B-1626674\",\"type\":\"ACTOR_ID\"}],\"ablyTs\":1788702584035,\"skipThreadReopen\":false,\"text\":\"Do you need support for an engineering or manufacturing project?\",\"richText\":\"<div>Do you need support for an engineering or manufacturing project?</div>\",\"status\":{\"messageStatus\":\"SENT\",\"sendFailure\":null,\"timestamp\":1788702584035},\"sensitivityType\":\"NOT_SENSITIVE\",\"genericChannelId\":1000,\"channelInstanceId\":56481505,\"recipients\":[],\"direction\":\"OUTGOING\",\"clientType\":\"API\",\"sender\":{\"@type\":\"SYSTEM_SENDER\"},\"logRepresentation\":\"InitialMessage[timestamp=1788702584035]\"},\"continueAfterMs\":1500}]"
+  }
+]

@@ -12,7 +12,13 @@ TITLE_ROLE_OPTIONS = {
     "Process Engineer", "Applications Engineer (Integrator)",
     "OEM Applications Engineer", "Other",
 }
-BUYER_TYPE_OPTIONS = {"Budget Owner", "Influencer", "End User", "Unknown", "Channel - Integrator"}
+BUYER_TYPE_OPTIONS = {
+    "Buyer - Quality",
+    "Gatekeeper - Process/Mfg Eng",
+    "Channel - Integrator",
+    "Channel - OEM Apps Eng",
+    "Unclassified",
+}
 SOURCE_TYPE_OPTIONS = {"career_page", "team_page", "integrator_directory"}
 CONTACT_STATUS_OPTIONS = {"not_attempted", "valid", "uncertain", "invalid", "no_credits"}
 
@@ -80,7 +86,7 @@ class Lead:
     contact_name: str = ""
     is_named: bool = False
     title_role: str = "Other"
-    buyer_type: str = "Unknown"
+    buyer_type: str = "Unclassified"
     source_type: str = "career_page"
     operational_trigger: str = ""
     pain_signal: str = ""

@@ -38,7 +38,13 @@ def test_lead_enum_option_sets():
     }
     assert CONTACT_STATUS_OPTIONS == {"not_attempted", "valid", "uncertain", "invalid", "no_credits"}
     assert "Applications Engineer (Integrator)" in TITLE_ROLE_OPTIONS
-    assert "Budget Owner" in BUYER_TYPE_OPTIONS
+    assert BUYER_TYPE_OPTIONS == {
+        "Buyer - Quality",
+        "Gatekeeper - Process/Mfg Eng",
+        "Channel - Integrator",
+        "Channel - OEM Apps Eng",
+        "Unclassified",
+    }
     assert "integrator_directory" in SOURCE_TYPE_OPTIONS
 
 

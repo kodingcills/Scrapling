@@ -10,6 +10,7 @@ from scrapling.spiders import Spider
 from lead_engine.classify import is_decision_maker
 from lead_engine.models import Lead
 from lead_engine.scrapers.base import (
+    classify_buyer_type,
     classify_persona,
     classify_title,
     find_pain_signal,
@@ -20,6 +21,33 @@ from lead_engine.scrapers.base import (
 EMAIL_RE = re.compile(r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}")
 LINKEDIN_RE = re.compile(r"https?://(?:www\.)?linkedin\.com/in/[A-Za-z0-9_%-]+/?")
 NAME_TITLE_SPLIT_RE = re.compile(r"\s*[-–—,]\s+")
+
+# Heading matches that look like people but aren't: department/service
+# headings, cookie notices, office locations, phone numbers.
+NAME_JUNK_WORDS = (
+    "engineering", "services", "management", "cookies", "office",
+    "group", "department", "corporate", "development",
+)
+NAME_JUNK_RE = re.compile(r"\b(" + "|".join(NAME_JUNK_WORDS) + r")\b")
+NAME_WORD_RE = re.compile(r"^(?:Mc|Mac|O')?[A-Z][A-Za-z'’\-]*[A-Za-z.]$|^[A-Z]$")
+
+
+def _looks_like_person_name(name: str) -> bool:
+    """Basic sanity check before treating a heading match as a person name.
+
+    Rejects digits, ALL CAPS strings, department/service/notice words,
+    candidates over ~40 characters, and anything that doesn't loosely match
+    a "Capitalized Word(s)" shape (2-4 words, each capitalized, no trailing
+    punctuation).
+    """
+    if not name or len(name) > 40 or any(ch.isdigit() for ch in name):
+        return False
+    if name == name.upper() and any(ch.isalpha() for ch in name):
+        return False
+    if NAME_JUNK_RE.search(name.lower()):
+        return False
+    words = name.split()
+    return 2 <= len(words) <= 4 and all(NAME_WORD_RE.match(word) for word in words)
 
 
 def extract_team_members(response: Response) -> List[dict]:
@@ -39,6 +67,8 @@ def extract_team_members(response: Response) -> List[dict]:
         name = parts[0].strip()
         title = parts[1].strip() if len(parts) > 1 else ""
         if not name or len(name.split()) > 5 or name.lower() in seen_names:
+            continue
+        if not _looks_like_person_name(name):
             continue
         scope_text = (
             node.parent.get_all_text(" ") if node.parent is not None and node.parent.tag != "body" else raw
@@ -87,7 +117,7 @@ def build_leads(response: Response, company: str = "") -> List[Lead]:
                 contact_name=member["name"],
                 is_named=bool(member["name"].strip()),
                 title_role=title_role,
-                buyer_type="Budget Owner" if member.get("decision_maker") else "Unknown",
+                buyer_type=classify_buyer_type(title_role),
                 source_type="team_page",
                 operational_trigger=f"team page contact: {member['name']}" + (f" ({company})" if company else ""),
                 pain_signal=pain,

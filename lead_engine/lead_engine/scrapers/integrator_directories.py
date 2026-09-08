@@ -20,6 +20,7 @@ from scrapling.fetchers import LeadEngineFetcher
 from scrapling.spiders import Spider
 
 from lead_engine.models import Lead
+from lead_engine.scrapers.base import classify_buyer_type
 
 JSON_TYPES = ("application/json",)
 
@@ -137,7 +138,7 @@ def scrape_fanuc_integrators(
                 contact_name="",
                 is_named=False,
                 title_role=title_role,
-                buyer_type="Channel - Integrator",
+                buyer_type=classify_buyer_type(title_role),
                 source_type="integrator_directory",
                 operational_trigger=trigger,
                 pain_signal="",

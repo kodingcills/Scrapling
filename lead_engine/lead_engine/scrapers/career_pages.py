@@ -1,6 +1,7 @@
 """Career-page scraping: link discovery, role extraction, and the spider."""
 
-from typing import Any, Dict, List
+import json
+from typing import Any, Dict, Iterator, List
 from urllib.parse import urljoin
 
 from scrapling import Selector
@@ -11,6 +12,7 @@ from scrapling.spiders import Spider
 from lead_engine.classify import classify_role
 from lead_engine.models import Lead, Role
 from lead_engine.scrapers.base import (
+    classify_buyer_type,
     classify_persona,
     classify_title,
     find_pain_signal,
@@ -65,7 +67,87 @@ def fetch_roles(url: str, company: str = "") -> List[Role]:
     return extract_roles(response, company=company)
 
 
-BUYER_TYPE_BY_CATEGORY = {"engineering": "End User", "buyer": "Budget Owner", "other": "Unknown"}
+# Vendor-agnostic XHR job-posting sniffing: any captured JSON that is (or
+# contains, one nesting level down) a list of objects with a title-shaped
+# field AND a location/apply-url-shaped field is treated as the postings
+# feed. This works because of the JSON shape, never because of which
+# ATS vendor or URL pattern produced it.
+TITLE_SHAPED_KEYS = ("title", "job_title", "position", "name")
+LOCATION_URL_SHAPED_KEYS = ("location", "locations", "apply_url", "url")
+URL_PREFERENCE_KEYS = ("apply_url", "url")
+
+
+def _posting_shaped(obj: Any) -> bool:
+    if not isinstance(obj, dict):
+        return False
+    keys = {str(key).lower() for key in obj}
+    has_title = any(key in keys for key in TITLE_SHAPED_KEYS)
+    has_loc_or_url = any(key in keys for key in LOCATION_URL_SHAPED_KEYS)
+    return has_title and has_loc_or_url
+
+
+def _posting_lists(data: Any) -> Iterator[List[Dict[str, Any]]]:
+    """Yield lists of posting-shaped dicts from a top-level list, or a list
+    sitting directly under one key of a top-level dict."""
+    if isinstance(data, list) and data and all(_posting_shaped(item) for item in data):
+        yield data
+    elif isinstance(data, dict):
+        for value in data.values():
+            if isinstance(value, list) and value and all(_posting_shaped(item) for item in value):
+                yield value
+
+
+def _first_str(obj: Dict[str, Any], keys) -> str:
+    for key in keys:
+        for obj_key, value in obj.items():
+            if obj_key.lower() == key and isinstance(value, str) and value.strip():
+                return value.strip()
+    return ""
+
+
+def _location_text(value: Any) -> str:
+    """Flatten a JSON location field (string, or list of strings/dicts)."""
+    if isinstance(value, str):
+        return value.strip()
+    if isinstance(value, list):
+        parts = []
+        for item in value:
+            if isinstance(item, str) and item.strip():
+                parts.append(item.strip())
+            elif isinstance(item, dict):
+                for key in ("canonical_name", "name", "city", "state"):
+                    if isinstance(item.get(key), str) and item[key].strip():
+                        parts.append(item[key].strip())
+                        break
+        return ", ".join(parts)
+    return ""
+
+
+def extract_roles_from_captured_xhr(response: Response, company: str = "") -> List[Role]:
+    """Extract Role candidates from any captured XHR whose JSON body looks
+    like a job-postings feed. Vendor-agnostic by construction."""
+    roles: Dict[str, Role] = {}
+    for xhr in getattr(response, "captured_xhr", None) or []:
+        body = getattr(xhr, "body", None)
+        if not body:
+            continue
+        try:
+            data = json.loads(body)
+        except (ValueError, TypeError):
+            continue
+        for postings in _posting_lists(data):
+            for obj in postings:
+                title = _first_str(obj, TITLE_SHAPED_KEYS)
+                if not title:
+                    continue
+                url = _first_str(obj, URL_PREFERENCE_KEYS)
+                location = _location_text(next((obj[k] for k in obj if k.lower() in ("location", "locations")), ""))
+                key = url or title
+                if key not in roles:
+                    roles[key] = Role(
+                        title=title, url=url, location=location, company=company, category=classify_role(title)
+                    )
+    return list(roles.values())
 
 
 def build_leads(response: Response, company: str = "") -> List[Lead]:
@@ -75,7 +157,12 @@ def build_leads(response: Response, company: str = "") -> List[Lead]:
     tech = find_tech_stack_mention(text)
     pain = find_pain_signal(text)
     leads: Dict[str, Lead] = {}
-    for role in extract_roles(response, company=company):
+    # When a captured XHR looks like the postings feed, use its JSON fields
+    # instead of DOM link text; otherwise fall back to DOM extraction.
+    roles = extract_roles_from_captured_xhr(response, company=company)
+    if not roles:
+        roles = extract_roles(response, company=company)
+    for role in roles:
         if role.category == "other":
             continue
         title_role = classify_title(role.title)
@@ -89,7 +176,7 @@ def build_leads(response: Response, company: str = "") -> List[Lead]:
             contact_name="",
             is_named=False,
             title_role=title_role,
-            buyer_type=BUYER_TYPE_BY_CATEGORY.get(role.category, "Unknown"),
+            buyer_type=classify_buyer_type(title_role),
             source_type="career_page",
             operational_trigger=f"open req: {role.title}" + (f" at {company}" if company else ""),
             pain_signal=pain,
@@ -137,6 +224,7 @@ class CareerPageSpider(Spider):
 __all__ = [
     "find_career_links",
     "extract_roles",
+    "extract_roles_from_captured_xhr",
     "fetch_roles",
     "build_leads",
     "CareerPageSpider",

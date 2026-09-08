@@ -1,6 +1,9 @@
 """Tests for scrapers/base.py title classification and keyword extraction."""
 
+import pytest
+
 from lead_engine.scrapers.base import (
+    classify_buyer_type,
     classify_persona,
     classify_title,
     find_pain_signal,
@@ -14,6 +17,17 @@ def test_classify_title_canonical_mapping():
     assert classify_title("Applications Engineer - Integrator") == "Applications Engineer (Integrator)"
     assert classify_title("CNC Machinist") == "Other"
     assert classify_title("") == "Other"
+
+
+def test_classify_buyer_type_covers_all_title_roles():
+    assert classify_buyer_type("Quality Manager") == "Buyer - Quality"
+    assert classify_buyer_type("Quality Engineer") == "Buyer - Quality"
+    assert classify_buyer_type("Manufacturing Engineer") == "Gatekeeper - Process/Mfg Eng"
+    assert classify_buyer_type("Process Engineer") == "Gatekeeper - Process/Mfg Eng"
+    assert classify_buyer_type("Applications Engineer (Integrator)") == "Channel - Integrator"
+    assert classify_buyer_type("OEM Applications Engineer") == "Channel - OEM Apps Eng"
+    assert classify_buyer_type("Other") == "Unclassified"
+    assert classify_buyer_type("") == "Unclassified"
 
 
 def test_classify_persona_routing():

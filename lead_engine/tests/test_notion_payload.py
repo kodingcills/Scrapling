@@ -3,7 +3,11 @@
 import json
 
 from lead_engine.models import Lead
-from lead_engine.notion_sync.client import NotionClient, build_properties
+from lead_engine.notion_sync.client import (
+    SOURCE_TYPE_NOTION_MAP,
+    NotionClient,
+    build_properties,
+)
 
 
 def _lead(**overrides):
@@ -12,7 +16,7 @@ def _lead(**overrides):
         source_url="https://acme.example.com/team/jane",
         contact_name="Jane Smith",
         title_role="Quality Manager",
-        buyer_type="Budget Owner",
+        buyer_type="Buyer - Quality",
         source_type="team_page",
         operational_trigger="plant expansion: new welding cell",
         pain_signal="scrap rate on second shift",
@@ -55,6 +59,24 @@ def test_email_property_present_only_when_set():
 def test_contact_status_select_mapped():
     props = build_properties(_lead(contact_status="valid"))
     assert props["Contact Status"] == {"select": {"name": "valid"}}
+
+
+def test_source_type_maps_to_real_notion_options():
+    assert SOURCE_TYPE_NOTION_MAP["career_page"] == "Career Page / Job Posting"
+    assert SOURCE_TYPE_NOTION_MAP["integrator_directory"] == "Integrator Directory"
+    # team_page has no clean existing Notion option; "Other" is the deliberate
+    # least-wrong fit, not an accident.
+    assert SOURCE_TYPE_NOTION_MAP["team_page"] == "Other"
+    for source_type, notion_name in SOURCE_TYPE_NOTION_MAP.items():
+        props = build_properties(_lead(source_type=source_type))
+        assert props["Source Type"] == {"select": {"name": notion_name}}
+
+
+def test_source_type_unknown_value_falls_back_to_other():
+    lead = _lead(source_type="career_page")
+    object.__setattr__(lead, "source_type", "trade_show")  # bypass the validator
+    props = build_properties(lead)
+    assert props["Source Type"] == {"select": {"name": "Other"}}
 
 
 def test_payload_serializes_cleanly():

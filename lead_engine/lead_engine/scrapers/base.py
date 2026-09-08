@@ -49,6 +49,23 @@ def classify_title(title_role: str) -> str:
     return "Other"
 
 
+BUYER_TYPE_BY_TITLE_ROLE = {
+    "Quality Manager": "Buyer - Quality",
+    "Quality Engineer": "Buyer - Quality",
+    "Manufacturing Engineer": "Gatekeeper - Process/Mfg Eng",
+    "Process Engineer": "Gatekeeper - Process/Mfg Eng",
+    "Applications Engineer (Integrator)": "Channel - Integrator",
+    "OEM Applications Engineer": "Channel - OEM Apps Eng",
+}
+
+
+def classify_buyer_type(title_role: str) -> str:
+    """Map a canonical title_role (from classify_title()) onto the real
+    Notion "Buyer Type" select vocabulary. Anything else — including
+    "Other" or empty — is "Unclassified"; never guess."""
+    return BUYER_TYPE_BY_TITLE_ROLE.get(title_role, "Unclassified")
+
+
 def _snippet(text: str, keyword: str, window: int = 60) -> str:
     """Extract a short snippet around the first case-insensitive occurrence of `keyword`."""
     idx = text.lower().find(keyword.lower())
@@ -115,6 +132,7 @@ def page_text(response) -> str:
 __all__ = [
     "classify_title",
     "classify_persona",
+    "classify_buyer_type",
     "find_pain_signal",
     "find_tech_stack_mention",
     "page_text",

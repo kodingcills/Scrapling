@@ -83,7 +83,7 @@ def test_oem_company_would_classify_as_oem_ae():
     lead = Lead(
         company="FANUC America",
         title_role="OEM Applications Engineer",
-        buyer_type="Channel - Integrator",
+        buyer_type="Channel - OEM Apps Eng",
         source_type="integrator_directory",
     )
     assert lead.title_role == "OEM Applications Engineer"

@@ -16,6 +16,17 @@ NOTION_VERSION = "2022-06-28"
 
 DEFAULT_STATUS = "New"
 
+# Lead.source_type -> live Notion "Source Type" select options. team_page has
+# no clean existing option (automated scraping of a company's own team page —
+# not a job posting, not a directory listing, not a human referral), so it
+# maps to "Other"; add a real "Team / About Page" option in both places later
+# if wanted.
+SOURCE_TYPE_NOTION_MAP = {
+    "career_page": "Career Page / Job Posting",
+    "integrator_directory": "Integrator Directory",
+    "team_page": "Other",
+}
+
 # Marker identifying "our" draft callout block in the page body — anything
 # without this prefix is assumed to be human-written and left alone.
 DRAFT_CALLOUT_EMOJI = "🎯"
@@ -37,6 +48,7 @@ def build_properties(lead: Lead) -> Dict[str, Any]:
         "Source URL": {"url": lead.source_url or None},
         "Title / Role": {"select": {"name": lead.title_role}},
         "Buyer Type": {"select": {"name": lead.buyer_type}},
+        "Source Type": {"select": {"name": SOURCE_TYPE_NOTION_MAP.get(lead.source_type, "Other")}},
         "Persona Type": {"select": {"name": lead.persona_type}},
         "Tech Stack / Bottleneck": {"rich_text": [{"text": {"content": lead.tech_stack_bottleneck}}]},
         "Generated Draft": {"rich_text": [{"text": {"content": lead.generated_draft}}]},
@@ -184,4 +196,5 @@ __all__ = [
     "build_properties",
     "DEFAULT_STATUS",
     "DRAFT_CALLOUT_MARKER",
+    "SOURCE_TYPE_NOTION_MAP",
 ]

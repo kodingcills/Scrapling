@@ -1,8 +1,45 @@
 """Campaign-wide configuration for lead_engine."""
 
 import os
+from pathlib import Path
 
 from scrapling.fetchers.lead_engine import CONTACT_EMAIL
+
+
+def _load_dotenv() -> None:
+    """Load KEY=VALUE lines from a .env file into the process environment.
+
+    Stdlib-only, matching this package's existing no-extra-runtime-deps
+    approach (see notifications/email_notify.py's use of smtplib over a
+    paid/extra-dependency provider). Nothing wired this up before, so a
+    populated .env file was silently inert - Settings() read straight from
+    os.environ and got empty strings for everything back.
+
+    Real environment variables always win: this only fills in values that
+    aren't already set (os.environ.setdefault), so `FOO=bar python main.py
+    ...` or CI-style env injection still overrides whatever's in the file.
+    Checks the current working directory first (the documented way to run
+    this CLI - `cd lead_engine && python main.py ...`), then falls back to
+    this package's own parent directory so it still works if invoked from
+    somewhere else.
+    """
+    candidates = [Path.cwd() / ".env", Path(__file__).resolve().parents[1] / ".env"]
+    for path in candidates:
+        if not path.is_file():
+            continue
+        for line in path.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, _, value = line.partition("=")
+            key = key.strip()
+            value = value.strip().strip('"').strip("'")
+            if key:
+                os.environ.setdefault(key, value)
+        break  # first match wins - don't layer multiple .env files
+
+
+_load_dotenv()
 
 NOTION_TOKEN = os.environ.get("NOTION_TOKEN", "")
 # Single live database: "Precision Assembly Leads"

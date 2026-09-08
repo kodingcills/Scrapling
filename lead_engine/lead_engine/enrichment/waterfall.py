@@ -20,6 +20,7 @@ verify), warn and truncate rather than silently burning to zero, and cap
 concurrent domain searches at 5 per Findymail's documented limit.
 """
 
+import re
 from concurrent.futures import ThreadPoolExecutor
 from copy import deepcopy
 from typing import Any, Dict, List, Optional
@@ -104,6 +105,22 @@ class FindymailClient:
         return self._call("GET", "credits")
 
 
+def role_search_terms(title_role: str) -> str:
+    """Strip our own canonical-taxonomy suffixes before sending a title to
+    Findymail's roles param.
+
+    Findymail's documented search/domain example uses plain single words
+    ("CEO", "Founder"); our canonical title_role values include compound
+    suffixes like "Applications Engineer (Integrator)" or a leading "OEM "
+    that describe OUR internal classification (integrator vs. OEM channel),
+    not anything that appears on a real person's title. Sending them
+    verbatim is very unlikely to match anyone's actual job title.
+    """
+    stripped = re.sub(r"\s*\([^)]*\)\s*$", "", title_role).strip()
+    stripped = re.sub(r"^OEM\s+", "", stripped).strip()
+    return stripped or title_role
+
+
 def domain_from_url(url: str) -> str:
     """Parse the bare registrable domain ('www.' stripped) from a URL."""
     netloc = urlparse(url).netloc.lower()
@@ -126,7 +143,7 @@ def enrich_lead(lead: Lead, client: FindymailClient) -> Lead:
                 if contact:
                     email = contact.get("email", "")
             elif domain:
-                contacts = client.search_domain(domain, [lead.title_role])
+                contacts = client.search_domain(domain, [role_search_terms(lead.title_role)])
                 if contacts:
                     match = contacts[0]
                     email = match.get("email", "")
@@ -217,5 +234,6 @@ __all__ = [
     "enrich_lead",
     "enrich_batch",
     "domain_from_url",
+    "role_search_terms",
     "MAX_CONCURRENT_DOMAIN_SEARCHES",
 ]

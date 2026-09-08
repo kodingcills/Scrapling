@@ -10,6 +10,7 @@ from lead_engine.enrichment.waterfall import (
     FindymailClient,
     enrich_batch,
     enrich_lead,
+    role_search_terms,
 )
 from lead_engine.models import Lead
 
@@ -85,6 +86,19 @@ def account_lead():
     )
 
 
+def integrator_lead():
+    return Lead(
+        company="Gamma Integration",
+        source_url="https://www.gammaintegration.example.com",
+        contact_name="",
+        is_named=False,
+        title_role="Applications Engineer (Integrator)",
+        buyer_type="Channel - Integrator",
+        source_type="integrator_directory",
+        persona_type="Practitioner",
+    )
+
+
 # ---------------------------------------------------------------------------
 # Named-lead path: search/name
 # ---------------------------------------------------------------------------
@@ -133,6 +147,50 @@ def test_account_lead_uses_search_domain_and_backfills_name():
     assert result.contact_name == "Ravi Patel"
     assert result.is_named is True
     assert result.email == "ravi@betaautomation.example.com"
+    assert result.contact_status == "valid"
+
+
+# ---------------------------------------------------------------------------
+# role_search_terms(): strip our own taxonomy artifacts before querying
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "title_role,expected",
+    [
+        ("Applications Engineer (Integrator)", "Applications Engineer"),
+        ("OEM Applications Engineer", "Applications Engineer"),
+        ("Quality Engineer", "Quality Engineer"),
+        ("Quality Manager", "Quality Manager"),
+        ("Manufacturing Engineer", "Manufacturing Engineer"),
+        ("Process Engineer", "Process Engineer"),
+        ("Other", "Other"),
+        ("", ""),
+    ],
+)
+def test_role_search_terms_strips_internal_taxonomy_suffixes(title_role, expected):
+    assert role_search_terms(title_role) == expected
+
+
+def test_integrator_lead_sends_stripped_role_to_search_domain():
+    """A real regression: FANUC integrator leads were sending the literal
+    canonical string "Applications Engineer (Integrator)" as a Findymail
+    role, which matches no real person's job title since the parenthetical
+    is our own internal channel tag, not anything on a real LinkedIn
+    profile. This pins the fix at the call site, not just the helper."""
+    transport = FakeFindymailTransport(
+        domain_results={
+            "gammaintegration.example.com": [
+                {"name": "Sam Lee", "email": "sam@gammaintegration.example.com"}
+            ]
+        },
+        verify_results={"sam@gammaintegration.example.com": True},
+    )
+    result = enrich_lead(integrator_lead(), make_client(transport))
+
+    domain_call = transport.endpoint_calls("search/domain")[0]
+    assert domain_call[2]["roles"] == ["Applications Engineer"]
+    assert result.email == "sam@gammaintegration.example.com"
     assert result.contact_status == "valid"
 
 

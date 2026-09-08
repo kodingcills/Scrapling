@@ -162,10 +162,30 @@ def _slots_for_lead(lead: Lead) -> dict:
     }
 
 
+def _clip_chars(text: str, max_chars: int) -> str:
+    """Character-bounded truncation (unlike _clip(), which bounds by word
+    count and cannot guarantee a character budget - see below)."""
+    if len(text) <= max_chars:
+        return text
+    truncated = text[: max_chars - 3].rsplit(" ", 1)[0]
+    return truncated + "..."
+
+
 def _template_subject(lead: Lead) -> str:
+    """Build a subject line and guarantee it fits validate_draft()'s 60-char
+    cap.
+
+    Previously clipped by word count (_clip(..., 10)), which bounds words,
+    not characters - every FANUC integrator lead shares a long
+    operational_trigger ("FANUC Authorized System Integrator, NN mi from
+    21250"), and a 10-word subject built from a long company name plus that
+    trigger reliably ran past 60 chars (68-70 chars observed on real leads),
+    crashing draft_for_lead() before any subject even shipped. Clip by
+    character count instead, which is what's actually being validated.
+    """
     trigger = lead.operational_trigger or lead.company
     trigger_short = trigger.split(":")[-1].strip()
-    return _clip(f"{lead.company} — {trigger_short}", 10).lower()
+    return _clip_chars(f"{lead.company} — {trigger_short}", 60).lower()
 
 
 _EXEC_TEMPLATE = (

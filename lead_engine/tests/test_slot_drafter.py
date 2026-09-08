@@ -6,6 +6,7 @@ from lead_engine.drafters import slot_drafter
 from lead_engine.drafters.slot_drafter import (
     BANNED_WORDS,
     WORD_MAX,
+    _template_subject,
     cta_violations,
     count_body_words,
     draft_for_lead,
@@ -192,6 +193,39 @@ def test_template_draft_passes_its_own_validator(lead_factory):
     ok, failures = validate_draft(subject, body)
     assert ok, failures
     assert drafted.status == "Drafted"
+
+
+def _long_integrator_lead():
+    """Real shape: every FANUC integrator lead shares this long trigger
+    boilerplate, and a long company name pushed the old word-clipped
+    subject to 68-70 chars against a 60-char validator cap."""
+    return Lead(
+        company="Conveyor & Automation Tech",
+        source_url="https://conveyor-automation.example.com",
+        title_role="Applications Engineer (Integrator)",
+        buyer_type="Channel - Integrator",
+        source_type="integrator_directory",
+        persona_type="Practitioner",
+        operational_trigger="directory listing: FANUC Authorized System Integrator, 18 mi from 21250",
+        email="contact@conveyor-automation.example.com",
+        contact_status="valid",
+    )
+
+
+def test_template_subject_stays_under_60_chars_for_long_company_and_trigger():
+    subject = _template_subject(_long_integrator_lead())
+    assert len(subject) <= 60, f"{len(subject)} chars: {subject!r}"
+
+
+def test_template_draft_passes_validator_for_long_integrator_lead():
+    """Regression: this exact combination crashed draft_for_lead() with
+    RuntimeError before the char-bounded clip fix."""
+    drafted = draft_for_lead(_long_integrator_lead())
+    subject, _, body = drafted.generated_draft.partition("\n\n")
+    subject = subject.removeprefix("Subject: ")
+    assert len(subject) <= 60, f"{len(subject)} chars: {subject!r}"
+    ok, failures = validate_draft(subject, body)
+    assert ok, failures
 
 
 def test_unclassified_lead_is_skipped_and_logged(caplog):

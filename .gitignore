@@ -110,3 +110,4 @@ output/*/index.html
 docs/_build
 public/
 web/
+_to_delete/

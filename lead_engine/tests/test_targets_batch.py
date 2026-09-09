@@ -314,6 +314,17 @@ def test_cmd_targets_dedup_caps_and_syncs_everything(tmp_path, monkeypatch, capl
     assert saved["https://seenco.example.com/careers/reqB"].contact_status == "not_attempted"
 
 
+def test_merge_existing_state_never_takes_company_name_as_contact():
+    """Notion's "Lead Name" title falls back to the company name for
+    account-level rows; merging that back must not mark the lead is_named
+    and steer future enrichment toward search_name with the company name."""
+    lead = Lead(company="Key Tronic Corporation", source_url="https://www.keytronic.com/quality-engineer/")
+    existing = Lead(source_url=lead.source_url, contact_name="Key Tronic Corporation", is_named=True)
+    main_module._merge_existing_state(lead, existing)
+    assert lead.contact_name == ""
+    assert lead.is_named is False
+
+
 def test_cmd_targets_no_enrich_spends_zero_findymail_calls(tmp_path, monkeypatch):
     targets_path = _write_yaml(
         tmp_path,

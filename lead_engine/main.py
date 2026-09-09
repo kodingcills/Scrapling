@@ -120,7 +120,10 @@ def _merge_existing_state(lead: Lead, existing: Lead) -> None:
     just compute (email, contact status, generated draft, contact name)."""
     if existing.email:
         lead.email = existing.email
-    if existing.contact_name and not lead.contact_name:
+    # Notion's "Lead Name" title falls back to the company name for
+    # account-level rows; backfilling that as a contact would wrongly mark
+    # the lead is_named and steer enrichment toward search_name.
+    if existing.contact_name and not lead.contact_name and existing.contact_name != lead.company:
         lead.contact_name = existing.contact_name
         lead.is_named = True
     if existing.contact_status and existing.contact_status != "not_attempted":

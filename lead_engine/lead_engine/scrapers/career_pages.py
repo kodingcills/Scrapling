@@ -18,6 +18,7 @@ from lead_engine.scrapers.base import (
     classify_persona,
     classify_title,
     domain_from_url,
+    extract_meta_description,
     find_pain_signal,
     find_tech_stack_mention,
     page_text,
@@ -266,6 +267,16 @@ class CareerPageSpider(Spider):
             yield Request(link)
 
 
+def fetch_company_description(homepage_url: str) -> str:
+    """Fetch the site's homepage once and return its meta description
+    verbatim. Blank (never guessed) when the fetch fails or neither meta
+    tag exists. Called once per company, not per page or per lead."""
+    from scrapling.fetchers import LeadEngineFetcher
+
+    response = LeadEngineFetcher.fetch(homepage_url)
+    return extract_meta_description(response)
+
+
 def crawl_leads(url: str, company: str = "", max_pages: int = DEFAULT_MAX_PAGES) -> List[Lead]:
     """Run CareerPageSpider to completion and return the aggregated Leads.
 
@@ -293,6 +304,7 @@ __all__ = [
     "fetch_roles",
     "build_leads",
     "crawl_leads",
+    "fetch_company_description",
     "CareerPageSpider",
     "DEFAULT_MAX_PAGES",
 ]

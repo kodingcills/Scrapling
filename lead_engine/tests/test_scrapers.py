@@ -3,7 +3,8 @@ from scrapling import Selector
 
 from lead_engine.scrapers.career_pages import extract_roles, find_career_links
 from lead_engine.scrapers.integrator_directories import extract_directory_entries
-from lead_engine.scrapers.team_pages import extract_team_members
+from lead_engine.scrapers.team_pages import build_leads, extract_team_members
+from lead_engine.scrapers.base import extract_meta_description
 
 
 HOME_HTML = """
@@ -105,3 +106,31 @@ def test_extract_team_members():
     assert by_name["Jane Smith"]["decision_maker"] is True
     assert by_name["Jane Smith"]["email"] == "jane@acme.example.com"
     assert by_name["Bob Jones"]["decision_maker"] is False
+
+
+def test_build_leads_carries_linkedin_from_team_page():
+    leads = build_leads(_fake_response(TEAM_HTML), company="Acme")
+    jane = next(lead for lead in leads if lead.contact_name == "Jane Smith")
+    assert jane.linkedin == "https://www.linkedin.com/in/janesmith"
+    assert jane.is_named is True
+    bob = next(lead for lead in leads if lead.contact_name == "Bob Jones")
+    assert bob.linkedin == ""
+
+
+def test_extract_meta_description_prefers_name_over_og():
+    both = _fake_response(
+        '<html><head><meta name="description" content="Name description.">'
+        '<meta property="og:description" content="OG description."></head></html>'
+    )
+    assert extract_meta_description(both) == "Name description."
+
+    og_only = _fake_response('<html><head><meta property="og:description" content="OG only."></head></html>')
+    assert extract_meta_description(og_only) == "OG only."
+
+
+def test_extract_meta_description_blank_without_meta_tags():
+    no_meta = _fake_response("<html><head><title>Acme</title></head><body><p>text</p></body></html>")
+    assert extract_meta_description(no_meta) == ""
+
+    empty_content = _fake_response('<html><head><meta name="description" content="   "></head></html>')
+    assert extract_meta_description(empty_content) == ""

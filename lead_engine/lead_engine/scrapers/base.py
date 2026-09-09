@@ -130,6 +130,20 @@ def domain_from_url(url: str) -> str:
     return netloc.removeprefix("www.")
 
 
+def extract_meta_description(response) -> str:
+    """Pull the company's own meta description verbatim: <meta
+    name="description"> first, then og:description. Empty when neither
+    exists - never fall back to scraping/summarizing arbitrary page
+    content."""
+    for selector in ('meta[name="description"]', 'meta[property="og:description"]'):
+        matches = response.css(selector)
+        if matches:
+            content = " ".join((matches[0].attrib.get("content") or "").split())
+            if content:
+                return content
+    return ""
+
+
 def page_text(response) -> str:
     """Best-effort plain text of a fetched page, for keyword scanning."""
     try:
@@ -150,6 +164,7 @@ __all__ = [
     "page_text",
     "domain_from_url",
     "DEFAULT_MAX_PAGES",
+    "extract_meta_description",
     "PAIN_KEYWORDS",
     "TECH_STACK_KEYWORDS",
 ]

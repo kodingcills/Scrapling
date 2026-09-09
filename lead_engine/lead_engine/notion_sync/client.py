@@ -38,6 +38,16 @@ DRAFT_CALLOUT_EMOJI = "🎯"
 DRAFT_CALLOUT_MARKER = f"{DRAFT_CALLOUT_EMOJI} Outreach draft:\n"
 
 
+def build_background_context(lead: Lead) -> str:
+    """Templated (never LLM-generated) Background & Context string from
+    data already on the Lead, using the same tech-then-pain phrasing the
+    drafter uses for its friction slot. Blank when the Lead has neither a
+    tech-stack mention nor a pain signal - no filler sentences."""
+    if lead.tech_stack_bottleneck and lead.pain_signal:
+        return f"{lead.tech_stack_bottleneck} — {lead.pain_signal}"
+    return lead.tech_stack_bottleneck or lead.pain_signal
+
+
 def build_properties(lead: Lead) -> Dict[str, Any]:
     """Map a Lead onto Notion database properties (schema lives here).
 
@@ -63,6 +73,15 @@ def build_properties(lead: Lead) -> Dict[str, Any]:
     # "Email" is a Notion EMAIL-type property; only set when we actually have one
     if lead.email:
         properties["Email"] = {"email": lead.email}
+    # LinkedIn is a URL property; only sent when present so a re-sync of a
+    # lead scraped without one can't clear a value already stored
+    if lead.linkedin:
+        properties["LinkedIn"] = {"url": lead.linkedin}
+    if lead.company_description:
+        properties["Profile Summary"] = {"rich_text": [{"text": {"content": lead.company_description[:2000]}}]}
+    background = build_background_context(lead)
+    if background:
+        properties["Background & Context"] = {"rich_text": [{"text": {"content": background[:2000]}}]}
     if lead.operational_trigger:
         properties["Operational Trigger"] = {"rich_text": [{"text": {"content": lead.operational_trigger[:2000]}}]}
     if lead.pain_signal:
@@ -185,6 +204,7 @@ class NotionClient:
         if status not in STATUS_OPTIONS:
             status = ""
         contact_name = _title("Lead Name")
+        linkedin = properties.get("LinkedIn", {}).get("url") or ""
         return Lead(
             source_url=source_url,
             contact_name=contact_name,
@@ -193,6 +213,8 @@ class NotionClient:
             contact_status=contact_status or "not_attempted",
             status=status or "New",
             generated_draft=_rich_text("Generated Draft"),
+            linkedin=linkedin,
+            company_description=_rich_text("Profile Summary"),
         )
 
     def upsert_lead(self, lead: Lead) -> str:

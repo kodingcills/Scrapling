@@ -25,6 +25,7 @@ import sys
 import yaml
 from datetime import datetime, timezone
 from pathlib import Path
+from urllib.parse import urlparse
 
 from scrapling.core.utils import log
 
@@ -132,6 +133,12 @@ def _merge_existing_state(lead: Lead, existing: Lead) -> None:
         lead.status = existing.status
     if existing.generated_draft:
         lead.generated_draft = existing.generated_draft
+    # A flaky crawl (site redesign, homepage meta missing this run) must not
+    # erase scrape-derived state Notion already has.
+    if existing.linkedin and not lead.linkedin:
+        lead.linkedin = existing.linkedin
+    if existing.company_description and not lead.company_description:
+        lead.company_description = existing.company_description
 
 
 def _split_seen_vs_new(leads: list) -> tuple:
@@ -184,6 +191,7 @@ def cmd_targets(args: argparse.Namespace) -> int:
     per_company_errors = []
     for target in targets:
         company = target["company"]
+        company_leads = []
         for url_key, label, crawl in (
             ("career_url", "career page", career_pages.crawl_leads),
             ("team_url", "team page", team_pages.crawl_leads),
@@ -195,10 +203,25 @@ def cmd_targets(args: argparse.Namespace) -> int:
             try:
                 leads = crawl(url, company=company)
                 log.info(f"[{company}] extracted {len(leads)} lead(s) from {label}")
-                all_leads.extend(leads)
+                company_leads.extend(leads)
             except Exception as error:  # noqa: BLE001 - one company's site being down must not kill the batch
                 log.error(f"[{company}] {label} failed, skipping: {error}")
                 per_company_errors.append(f"{company} ({label}): {error}")
+        if company_leads:
+            seed_url = target["career_url"] or target["team_url"]
+            homepage = f"{urlparse(seed_url).scheme}://{urlparse(seed_url).netloc}/"
+            try:
+                description = career_pages.fetch_company_description(homepage)
+                if description:
+                    log.info(f"[{company}] company description from {homepage}: {description[:80]}")
+                else:
+                    log.info(f"[{company}] no meta description on {homepage}; leaving Profile Summary blank")
+            except Exception as error:  # noqa: BLE001 - a dead homepage must not cost the company its leads
+                log.warning(f"[{company}] homepage fetch failed ({error}); leaving Profile Summary blank")
+                description = ""
+            for lead in company_leads:
+                lead.company_description = description
+        all_leads.extend(company_leads)
 
     out_path = Path(args.out) if args.out else _default_out("targets")
 

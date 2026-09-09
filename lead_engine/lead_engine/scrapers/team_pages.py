@@ -126,6 +126,7 @@ def build_leads(response: Response, company: str = "") -> List[Lead]:
                 pain_signal=pain,
                 persona_type=persona,
                 tech_stack_bottleneck=tech,
+                linkedin=member.get("linkedin", ""),
             )
         )
     return leads

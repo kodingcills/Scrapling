@@ -141,11 +141,13 @@ def enrich_lead(lead: Lead, client: FindymailClient) -> Lead:
             if lead.is_named and lead.contact_name and domain:
                 contact = client.search_name(lead.contact_name, domain)
                 if contact:
+                    log.debug(f"Raw Findymail contact for {lead.contact_name}: {contact}")
                     email = contact.get("email", "")
             elif domain:
                 contacts = client.search_domain(domain, [role_search_terms(lead.title_role)])
                 if contacts:
                     match = contacts[0]
+                    log.debug(f"Raw Findymail contact for {domain}: {match}")
                     email = match.get("email", "")
                     if match.get("name"):
                         # Upgrade from account-level to a named contact

@@ -6,6 +6,7 @@ from lead_engine.models import Lead
 from lead_engine.notion_sync.client import (
     SOURCE_TYPE_NOTION_MAP,
     NotionClient,
+    build_background_context,
     build_properties,
     normalize_notion_id,
 )
@@ -210,3 +211,67 @@ def test_get_existing_lead_tolerates_invalid_select_values():
     existing = client.get_existing_lead("https://seenco.example.com/careers/a")
     assert existing.contact_status == "not_attempted"
     assert existing.status == "New"
+
+
+def test_linkedin_and_profile_summary_mapped_when_present():
+    props = build_properties(
+        _lead(
+            linkedin="https://www.linkedin.com/in/janesmith",
+            company_description="Acme builds precision assembly cells for med device OEMs.",
+        )
+    )
+    assert props["LinkedIn"] == {"url": "https://www.linkedin.com/in/janesmith"}
+    assert (
+        props["Profile Summary"]["rich_text"][0]["text"]["content"]
+        == "Acme builds precision assembly cells for med device OEMs."
+    )
+
+
+def test_linkedin_and_profile_summary_omitted_when_blank():
+    """URL properties sent as null clear the stored value, and an empty
+    rich_text would wipe Profile Summary on re-sync - both stay absent
+    instead of blanking data from a previous run."""
+    props = build_properties(_lead())
+    assert "LinkedIn" not in props
+    assert "Profile Summary" not in props
+    # ...and Background & Context stays absent when the lead has neither a
+    # tech-stack mention nor a pain signal - no filler sentence
+    assert "Background & Context" not in build_properties(
+        _lead(tech_stack_bottleneck="", pain_signal="")
+    )
+
+
+def test_background_context_combines_tech_then_pain():
+    lead = _lead(
+        tech_stack_bottleneck="cells run FANUC with PROFINET",
+        pain_signal="scrap rate on second shift",
+    )
+    assert build_background_context(lead) == "cells run FANUC with PROFINET — scrap rate on second shift"
+    props = build_properties(lead)
+    assert (
+        props["Background & Context"]["rich_text"][0]["text"]["content"]
+        == "cells run FANUC with PROFINET — scrap rate on second shift"
+    )
+
+
+def test_background_context_single_signal_and_blank_case():
+    tech_only = _lead(tech_stack_bottleneck="UR10e cobots on the line", pain_signal="")
+    assert build_background_context(tech_only) == "UR10e cobots on the line"
+    pain_only = _lead(tech_stack_bottleneck="", pain_signal="rework spike after changeover")
+    assert build_background_context(pain_only) == "rework spike after changeover"
+    neither = _lead(tech_stack_bottleneck="", pain_signal="")
+    assert build_background_context(neither) == ""
+    assert "Background & Context" not in build_properties(neither)
+
+
+def test_get_existing_lead_maps_linkedin_and_profile_summary_back():
+    transport = _properties_transport(
+        {
+            "LinkedIn": {"url": "https://www.linkedin.com/in/patkim"},
+            "Profile Summary": {"rich_text": [{"plain_text": "Seen Co assembles PCBAs."}]},
+        }
+    )
+    client = NotionClient("secret", "db-id", transport=transport)
+    existing = client.get_existing_lead("https://seenco.example.com/careers/a")
+    assert existing.linkedin == "https://www.linkedin.com/in/patkim"
+    assert existing.company_description == "Seen Co assembles PCBAs."

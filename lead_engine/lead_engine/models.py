@@ -96,6 +96,8 @@ class Lead:
     status: str = "New"
     email: str = ""
     contact_status: str = "not_attempted"
+    linkedin: str = ""
+    company_description: str = ""
 
     def __post_init__(self):
         if self.persona_type not in PERSONA_TYPE_OPTIONS:
@@ -127,10 +129,12 @@ class Lead:
             "persona_type": self.persona_type,
             "tech_stack_bottleneck": self.tech_stack_bottleneck,
             "generated_draft": self.generated_draft,
-            "status": self.status,
-            "email": self.email,
-            "contact_status": self.contact_status,
-        }
+        "status": self.status,
+        "email": self.email,
+        "contact_status": self.contact_status,
+        "linkedin": self.linkedin,
+        "company_description": self.company_description,
+    }
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "Lead":

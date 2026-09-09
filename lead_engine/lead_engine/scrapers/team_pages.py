@@ -3,6 +3,7 @@
 import re
 from typing import List
 
+from scrapling.core.utils import log
 from scrapling.engines.toolbelt.custom import Response
 from scrapling.fetchers import LeadEngineFetcher
 from scrapling.spiders import Spider
@@ -10,9 +11,11 @@ from scrapling.spiders import Spider
 from lead_engine.classify import is_decision_maker
 from lead_engine.models import Lead
 from lead_engine.scrapers.base import (
+    DEFAULT_MAX_PAGES,
     classify_buyer_type,
     classify_persona,
     classify_title,
+    domain_from_url,
     find_pain_signal,
     find_tech_stack_mention,
     page_text,
@@ -129,12 +132,14 @@ def build_leads(response: Response, company: str = "") -> List[Lead]:
 
 
 class TeamPageSpider(Spider):
-    """Crawl team/about pages politely."""
+    """Fetch a team/about page politely through the Spider machinery.
+
+    Seed page only, no link following: team data lives on the one
+    About/Team page, and there is no follow-filter heuristic for team
+    sections that would not just wander the corporate site.
+    """
 
     name = "team_pages"
-    start_urls: list[str] = []
-    allowed_domains: set[str] = set()
-
     robots_txt_obey = True
     robots_crawl_delay_floor = 5.0
     autothrottle_enabled = True
@@ -143,14 +148,48 @@ class TeamPageSpider(Spider):
     autothrottle_block_backoff_factor = 2.5
     autothrottle_jitter = 0.3
 
+    def __init__(self, seed_url: str, company: str = "", max_pages: int = DEFAULT_MAX_PAGES):
+        self.seed_url = seed_url
+        self.company = company
+        self.max_pages = max(1, max_pages)
+        self.pages_visited = 0
+        self.start_urls = [seed_url]
+        self.allowed_domains = {domain_from_url(seed_url)}
+        super().__init__()
+
+    def configure_sessions(self, manager) -> None:
+        # Same tuned browsing profile as LeadEngineFetcher (see career_pages).
+        from scrapling.fetchers import AsyncStealthySession
+        from scrapling.fetchers.lead_engine import LeadEngineFetcher
+
+        manager.add("default", AsyncStealthySession(headless=True, **LeadEngineFetcher.profile))
+
     async def parse(self, response: Response):
-        for member in extract_team_members(response):
-            yield {"type": "team_member", **member}
+        self.pages_visited += 1
+        for lead in build_leads(response, company=self.company):
+            yield lead.to_dict()
+
+
+def crawl_leads(url: str, company: str = "") -> List[Lead]:
+    """Run TeamPageSpider to completion and return the aggregated Leads."""
+    spider = TeamPageSpider(seed_url=url, company=company)
+    result = spider.start()
+    if spider.pages_visited == 0:
+        stats = result.stats
+        raise RuntimeError(
+            f"crawl visited 0 pages (seed fetch failed or disallowed: "
+            f"failed={stats.failed_requests_count}, blocked={stats.blocked_requests_count}, "
+            f"robots_disallowed={stats.robots_disallowed_count})"
+        )
+    leads = [Lead.from_dict(item) for item in result.items if "title_role" in item]
+    log.info(f"Crawled {spider.pages_visited} page(s) at {url}; extracted {len(leads)} lead(s)")
+    return leads
 
 
 __all__ = [
     "extract_team_members",
     "fetch_team",
     "build_leads",
+    "crawl_leads",
     "TeamPageSpider",
 ]

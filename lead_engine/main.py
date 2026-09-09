@@ -10,11 +10,12 @@ Usage:
     python main.py draft <leads.jsonl> [--force] [--no-sync]
 
 `targets` is the real entry point for running this against a company list
-(see data/target_companies.yaml) - it loops career-pages (and team-page,
-when a target has team_url) across every company in one run, isolating
-failures per-company so one bad site doesn't kill the batch, and syncs
-everything once at the end. `career-pages`/`team-page` on a single URL
-still exist for one-off runs and debugging.
+(see data/target_companies.yaml) - it crawls each company's career section
+(and team page, when a target has team_url) with the CareerPageSpider/
+TeamPageSpider instead of fetching a single URL, isolating failures
+per-company so one bad site doesn't kill the batch, and syncs everything
+once at the end. `career-pages`/`team-page` on a single URL still exist
+for one-off runs and debugging.
 """
 
 import argparse
@@ -114,8 +115,6 @@ def _load_targets(path: Path) -> list:
 
 
 def cmd_targets(args: argparse.Namespace) -> int:
-    from scrapling.fetchers import LeadEngineFetcher
-
     from lead_engine.scrapers import career_pages, team_pages
 
     targets_path = Path(args.targets_file)
@@ -135,17 +134,16 @@ def cmd_targets(args: argparse.Namespace) -> int:
     per_company_errors = []
     for target in targets:
         company = target["company"]
-        for url_key, label, module in (
-            ("career_url", "career page", career_pages),
-            ("team_url", "team page", team_pages),
+        for url_key, label, crawl in (
+            ("career_url", "career page", career_pages.crawl_leads),
+            ("team_url", "team page", team_pages.crawl_leads),
         ):
             url = target[url_key]
             if not url:
                 continue
-            log.info(f"[{company}] fetching {label}: {url}")
+            log.info(f"[{company}] crawling {label}: {url}")
             try:
-                response = LeadEngineFetcher.fetch(url)
-                leads = module.build_leads(response, company=company)
+                leads = crawl(url, company=company)
                 log.info(f"[{company}] extracted {len(leads)} lead(s) from {label}")
                 all_leads.extend(leads)
             except Exception as error:  # noqa: BLE001 - one company's site being down must not kill the batch

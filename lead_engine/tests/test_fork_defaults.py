@@ -38,7 +38,7 @@ def test_call_kwargs_override_profile():
 
 
 def test_spider_polite_throttling_settings():
-    spider = CareerPageSpider()
+    spider = CareerPageSpider(seed_url="https://acme.example.com/careers")
     assert spider.robots_txt_obey is True
     assert spider.robots_crawl_delay_floor == 5.0
     assert spider.autothrottle_jitter > 0
@@ -66,7 +66,7 @@ class _Stub:
 
 
 def test_engine_applies_crawl_delay_floor_without_robots(monkeypatch):
-    spider = CareerPageSpider()
+    spider = CareerPageSpider(seed_url="https://acme.example.com/careers")
     spider.robots_txt_obey = False
     manager = SessionManager()
     manager.add("default", _Stub())

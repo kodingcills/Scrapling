@@ -14,7 +14,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import main as main_module  # noqa: E402
 
-EXPECTED_SUBCOMMANDS = {"career-pages", "fanuc", "team-page", "sync-jsonl", "draft", "enrich"}
+EXPECTED_SUBCOMMANDS = {"targets", "career-pages", "fanuc", "team-page", "sync-jsonl", "draft", "enrich"}
 
 
 def test_help_lists_all_subcommands(capsys):

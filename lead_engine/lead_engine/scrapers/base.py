@@ -6,6 +6,7 @@ hurting. A lead can match one, both, or neither.
 """
 
 from typing import Optional
+from urllib.parse import urlparse
 
 TITLE_ROLE_MAP = {
     "quality manager": "Quality Manager",
@@ -118,6 +119,17 @@ def classify_persona(title_role: str) -> str:
     return "Unclassified"
 
 
+# Hard per-company cap on spider crawl pages (a real production concern: one
+# pathological site must not stall the whole batch). Overridable per call.
+DEFAULT_MAX_PAGES = 15
+
+
+def domain_from_url(url: str) -> str:
+    """Parse the bare registrable domain ('www.' stripped) from a URL."""
+    netloc = urlparse(url).netloc.lower()
+    return netloc.removeprefix("www.")
+
+
 def page_text(response) -> str:
     """Best-effort plain text of a fetched page, for keyword scanning."""
     try:
@@ -136,6 +148,8 @@ __all__ = [
     "find_pain_signal",
     "find_tech_stack_mention",
     "page_text",
+    "domain_from_url",
+    "DEFAULT_MAX_PAGES",
     "PAIN_KEYWORDS",
     "TECH_STACK_KEYWORDS",
 ]

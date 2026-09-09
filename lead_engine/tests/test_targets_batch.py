@@ -90,6 +90,17 @@ class _FakeResponse:
     pass
 
 
+def _patch_crawls(monkeypatch, career=None, team=None):
+    monkeypatch.setattr(
+        "lead_engine.scrapers.career_pages.crawl_leads",
+        career or (lambda url, company="": []),
+    )
+    monkeypatch.setattr(
+        "lead_engine.scrapers.team_pages.crawl_leads",
+        team or (lambda url, company="": []),
+    )
+
+
 def test_cmd_targets_isolates_one_company_failure(tmp_path, monkeypatch, caplog):
     """Real-world scenario this exists for: one target's site is down or
     times out. That must not stop the rest of the batch, and it must show
@@ -105,17 +116,13 @@ def test_cmd_targets_isolates_one_company_failure(tmp_path, monkeypatch, caplog)
     )
     out_path = tmp_path / "out.jsonl"
 
-    def fake_fetch(url, **kwargs):
+    def fake_career_crawl(url, company="", **kwargs):
         if "broken" in url:
             raise RuntimeError("connection timed out")
-        return _FakeResponse()
+        return [Lead(company=company, source_url=url, title_role="Quality Engineer")]
 
-    def fake_build_leads(response, company=""):
-        return [Lead(company=company, source_url="https://good.example.com/careers", title_role="Quality Engineer")]
-
-    monkeypatch.setattr("scrapling.fetchers.LeadEngineFetcher.fetch", staticmethod(fake_fetch))
-    monkeypatch.setattr("lead_engine.scrapers.career_pages.build_leads", fake_build_leads)
-    monkeypatch.setattr("lead_engine.notifications.email_notify.send_run_summary", lambda *a, **kw: None)
+    monkeypatch.setattr(main_module, "send_run_summary", lambda *a, **kw: None)
+    _patch_crawls(monkeypatch, career=fake_career_crawl)
 
     args = argparse.Namespace(targets_file=str(targets_path), out=str(out_path), no_sync=True)
     exit_code = main_module.cmd_targets(args)
@@ -144,20 +151,16 @@ def test_cmd_targets_runs_both_career_and_team_urls_for_one_company(tmp_path, mo
     out_path = tmp_path / "out.jsonl"
     calls = []
 
-    def fake_fetch(url, **kwargs):
+    def fake_career_crawl(url, company="", **kwargs):
         calls.append(url)
-        return _FakeResponse()
-
-    def fake_career_leads(response, company=""):
         return [Lead(company=company, source_type="career_page", title_role="Quality Engineer")]
 
-    def fake_team_leads(response, company=""):
+    def fake_team_crawl(url, company="", **kwargs):
+        calls.append(url)
         return [Lead(company=company, source_type="team_page", title_role="Quality Manager", is_named=True)]
 
-    monkeypatch.setattr("scrapling.fetchers.LeadEngineFetcher.fetch", staticmethod(fake_fetch))
-    monkeypatch.setattr("lead_engine.scrapers.career_pages.build_leads", fake_career_leads)
-    monkeypatch.setattr("lead_engine.scrapers.team_pages.build_leads", fake_team_leads)
-    monkeypatch.setattr("lead_engine.notifications.email_notify.send_run_summary", lambda *a, **kw: None)
+    monkeypatch.setattr(main_module, "send_run_summary", lambda *a, **kw: None)
+    _patch_crawls(monkeypatch, career=fake_career_crawl, team=fake_team_crawl)
 
     args = argparse.Namespace(targets_file=str(targets_path), out=str(out_path), no_sync=True)
     exit_code = main_module.cmd_targets(args)

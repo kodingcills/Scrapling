@@ -5,16 +5,19 @@ from typing import Any, Dict, Iterator, List
 from urllib.parse import urljoin
 
 from scrapling import Selector
+from scrapling.core.utils import log
 from scrapling.engines.toolbelt.custom import Response
 from scrapling.fetchers import LeadEngineFetcher
-from scrapling.spiders import Spider
+from scrapling.spiders import Request, Spider
 
 from lead_engine.classify import classify_role
 from lead_engine.models import Lead, Role
 from lead_engine.scrapers.base import (
+    DEFAULT_MAX_PAGES,
     classify_buyer_type,
     classify_persona,
     classify_title,
+    domain_from_url,
     find_pain_signal,
     find_tech_stack_mention,
     page_text,
@@ -204,14 +207,17 @@ def build_leads(response: Response, company: str = "") -> List[Lead]:
 class CareerPageSpider(Spider):
     """Crawl a site's career section with polite, human-paced throttling.
 
-    All anti-detection/throttling tailoring comes from class attributes here;
+    Starts at the seed career URL, follows only links that look like
+    career-section pages (the same CAREER_PATH_HINTS signal
+    find_career_links() uses, so there is one definition of "looks like a
+    careers link"), extracts full Leads on every page via build_leads()
+    (single source of truth for taxonomy/persona classification), and
+    stops following once max_pages pages have been processed. All
+    anti-detection/throttling tailoring comes from class attributes here;
     the reusable behavior lives in the scrapling fork.
     """
 
     name = "career_pages"
-    start_urls: list[str] = []
-    allowed_domains: set[str] = set()
-
     robots_txt_obey = True
     robots_crawl_delay_floor = 5.0
     concurrent_requests = 2
@@ -222,18 +228,62 @@ class CareerPageSpider(Spider):
     autothrottle_block_backoff_factor = 2.5
     autothrottle_jitter = 0.3
 
-    def configure_sessions(self, manager) -> None:
-        from scrapling.fetchers import FetcherSession
+    def __init__(self, seed_url: str, company: str = "", max_pages: int = DEFAULT_MAX_PAGES):
+        self.seed_url = seed_url
+        self.company = company
+        self.max_pages = max(1, max_pages)
+        self.pages_visited = 0
+        self._follows_enqueued = 0
+        self.start_urls = [seed_url]
+        self.allowed_domains = {domain_from_url(seed_url)}
+        super().__init__()
 
-        manager.add("default", FetcherSession())
+    def configure_sessions(self, manager) -> None:
+        # Same tuned browsing profile as LeadEngineFetcher (headless, XHR
+        # capture, Cloudflare solving): a plain FetcherSession would miss
+        # job feeds served via XHR and regressed live lead counts.
+        from scrapling.fetchers import AsyncStealthySession
+        from scrapling.fetchers.lead_engine import LeadEngineFetcher
+
+        manager.add("default", AsyncStealthySession(headless=True, **LeadEngineFetcher.profile))
 
     async def parse(self, response: Response):
-        company = self.allowed_domains and next(iter(self.allowed_domains), "") or ""
-        for role in extract_roles(response, company=company):
-            yield {
-                "type": "role",
-                **role.to_dict(),
-            }
+        self.pages_visited += 1
+        for lead in build_leads(response, company=self.company):
+            yield lead.to_dict()
+        if self.pages_visited >= self.max_pages:
+            self.logger.info(
+                f"[{self.company or self.seed_url}] reached the {self.max_pages}-page crawl cap"
+            )
+            return
+        html = response.body.decode(response.encoding, errors="replace")
+        for link in find_career_links(html, base_url=response.url or ""):
+            if link == response.url:
+                continue
+            if self.pages_visited + self._follows_enqueued >= self.max_pages:
+                return
+            self._follows_enqueued += 1
+            yield Request(link)
+
+
+def crawl_leads(url: str, company: str = "", max_pages: int = DEFAULT_MAX_PAGES) -> List[Lead]:
+    """Run CareerPageSpider to completion and return the aggregated Leads.
+
+    Raises RuntimeError when the seed page itself could not be fetched, so
+    a dead site surfaces as a per-company error instead of a silent zero.
+    """
+    spider = CareerPageSpider(seed_url=url, company=company, max_pages=max_pages)
+    result = spider.start()
+    if spider.pages_visited == 0:
+        stats = result.stats
+        raise RuntimeError(
+            f"crawl visited 0 pages (seed fetch failed or disallowed: "
+            f"failed={stats.failed_requests_count}, blocked={stats.blocked_requests_count}, "
+            f"robots_disallowed={stats.robots_disallowed_count})"
+        )
+    leads = [Lead.from_dict(item) for item in result.items if "title_role" in item]
+    log.info(f"Crawled {spider.pages_visited} page(s) at {url}; extracted {len(leads)} lead(s)")
+    return leads
 
 
 __all__ = [
@@ -242,5 +292,7 @@ __all__ = [
     "extract_roles_from_captured_xhr",
     "fetch_roles",
     "build_leads",
+    "crawl_leads",
     "CareerPageSpider",
+    "DEFAULT_MAX_PAGES",
 ]

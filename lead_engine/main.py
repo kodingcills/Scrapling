@@ -1,6 +1,7 @@
 """lead_engine CLI.
 
 Usage:
+    python main.py targets <targets.yaml> [--out leads.jsonl] [--no-sync]
     python main.py career-pages <url> [--company NAME] [--out leads.jsonl] [--no-sync]
     python main.py fanuc [--zip 21250] [--radius 100] [--out leads.jsonl] [--no-sync]
     python main.py team-page <url> [--company NAME] [--out leads.jsonl] [--no-sync]
@@ -8,14 +9,19 @@ Usage:
     python main.py enrich <leads.jsonl> [--no-sync]
     python main.py draft <leads.jsonl> [--force] [--no-sync]
 
-For multiple career-page/team-page targets, loop the command at the shell
-level (`for u in ...; do python main.py career-pages "$u" --company "X"; done`)
-- there's no batch/YAML loader in the codebase to call into yet.
+`targets` is the real entry point for running this against a company list
+(see data/target_companies.yaml) - it loops career-pages (and team-page,
+when a target has team_url) across every company in one run, isolating
+failures per-company so one bad site doesn't kill the batch, and syncs
+everything once at the end. `career-pages`/`team-page` on a single URL
+still exist for one-off runs and debugging.
 """
 
 import argparse
 import json
 import sys
+
+import yaml
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -72,6 +78,96 @@ def _sync_leads(leads: list) -> int:
         except Exception as error:  # noqa: BLE001 - one bad row shouldn't stop the batch
             log.error(f"Sync failed for {lead.source_url or lead.company}: {error}")
     return synced
+
+
+def _load_targets(path: Path) -> list:
+    """Load and validate a targets YAML file.
+
+    Expected shape:
+        targets:
+          - company: "Acme Robotics"
+            career_url: "https://acme.example.com/careers"
+            team_url: "https://acme.example.com/about/team"   # optional
+
+    Raises ValueError with a specific, actionable message on malformed
+    input rather than letting a KeyError/TypeError surface from deep in
+    the loop - this runs unattended across many companies, a clear error
+    up front beats a confusing traceback three companies in.
+    """
+    with path.open(encoding="utf-8") as handle:
+        data = yaml.safe_load(handle) or {}
+
+    raw_targets = data.get("targets")
+    if not isinstance(raw_targets, list) or not raw_targets:
+        raise ValueError(f"{path}: expected a top-level 'targets' list with at least one entry")
+
+    targets = []
+    for index, entry in enumerate(raw_targets):
+        if not isinstance(entry, dict) or "company" not in entry:
+            raise ValueError(f"{path}: targets[{index}] must be a mapping with at least a 'company' key")
+        career_url = entry.get("career_url", "")
+        team_url = entry.get("team_url", "")
+        if not career_url and not team_url:
+            raise ValueError(f"{path}: targets[{index}] ({entry['company']!r}) has neither career_url nor team_url")
+        targets.append({"company": entry["company"], "career_url": career_url, "team_url": team_url})
+    return targets
+
+
+def cmd_targets(args: argparse.Namespace) -> int:
+    from scrapling.fetchers import LeadEngineFetcher
+
+    from lead_engine.scrapers import career_pages, team_pages
+
+    targets_path = Path(args.targets_file)
+    if not targets_path.is_file():
+        log.error(f"Not a file: {targets_path}")
+        return 1
+
+    try:
+        targets = _load_targets(targets_path)
+    except ValueError as error:
+        log.error(str(error))
+        return 1
+
+    log.info(f"Loaded {len(targets)} target compan{'y' if len(targets) == 1 else 'ies'} from {targets_path}")
+
+    all_leads = []
+    per_company_errors = []
+    for target in targets:
+        company = target["company"]
+        for url_key, label, module in (
+            ("career_url", "career page", career_pages),
+            ("team_url", "team page", team_pages),
+        ):
+            url = target[url_key]
+            if not url:
+                continue
+            log.info(f"[{company}] fetching {label}: {url}")
+            try:
+                response = LeadEngineFetcher.fetch(url)
+                leads = module.build_leads(response, company=company)
+                log.info(f"[{company}] extracted {len(leads)} lead(s) from {label}")
+                all_leads.extend(leads)
+            except Exception as error:  # noqa: BLE001 - one company's site being down must not kill the batch
+                log.error(f"[{company}] {label} failed, skipping: {error}")
+                per_company_errors.append(f"{company} ({label}): {error}")
+
+    out_path = Path(args.out) if args.out else _default_out("targets")
+    save_leads(out_path, all_leads)
+    log.info(f"Saved {len(all_leads)} total lead(s) -> {out_path}")
+
+    synced = 0 if args.no_sync else _sync_leads(all_leads)
+    send_run_summary(
+        "targets",
+        {
+            "companies": len(targets),
+            "extracted": len(all_leads),
+            "synced": synced,
+            "errors": len(per_company_errors),
+        },
+        errors=per_company_errors or None,
+    )
+    return 0
 
 
 def cmd_career_pages(args: argparse.Namespace) -> int:
@@ -245,6 +341,14 @@ def cmd_enrich(args: argparse.Namespace) -> int:
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(prog="lead_engine")
     subparsers = parser.add_subparsers(dest="command", required=True)
+
+    targets_parser = subparsers.add_parser(
+        "targets", help="Scrape career pages (and team pages) for every company in a targets YAML file"
+    )
+    targets_parser.add_argument("targets_file", help="Path to a targets YAML file (see data/target_companies.yaml)")
+    targets_parser.add_argument("--out", default=None, help="Output jsonl path (default: data/leads_targets_<ts>.jsonl)")
+    targets_parser.add_argument("--no-sync", action="store_true", help="Skip pushing to Notion")
+    targets_parser.set_defaults(func=cmd_targets)
 
     cp_parser = subparsers.add_parser("career-pages", help="Scrape one career page for target-role postings")
     cp_parser.add_argument("url", help="Career page URL to scrape")

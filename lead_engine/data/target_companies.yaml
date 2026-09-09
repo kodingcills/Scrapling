@@ -1,0 +1,58 @@
+# Real target companies for lead_engine's career-pages scraper.
+#
+# Sourced via web research (2026-09-09), independently verified: mid-size
+# (not Jabil/Flex/Benchmark-scale) US-based precision manufacturers with a
+# real, public careers page, doing robotic/precision assembly work
+# (electronics, medical device, or precision mechanical assembly) - the
+# kind of shop that would plausibly be hiring Quality Engineers,
+# Manufacturing Engineers, or Process Engineers.
+#
+# Run with: python main.py targets data/target_companies.yaml
+#
+# Dropped during research (see chat history for why): Providien (now a
+# Carlisle Companies subsidiary - not mid-size independent), Interplex
+# (Singapore HQ, not US-based), Minnetronix Medical (careers URL 404'd,
+# needs a manual check before adding).
+
+targets:
+  - company: "Creation Technologies"
+    career_url: "https://www.creationtech.com/careers/"
+
+  - company: "Kimball Electronics"
+    career_url: "https://www.kimballelectronics.com/career"
+
+  - company: "SigmaTron International"
+    career_url: "https://sigmatronintl.com/careers/"
+
+  - company: "CTS Corporation"
+    career_url: "https://careers.ctscorp.com/"
+
+  - company: "Integer Holdings Corporation"
+    career_url: "https://www.integer.net/careers/default.aspx"
+
+  - company: "Cretex Medical"
+    career_url: "https://www.cretexmedical.com/careers/"
+
+  - company: "Resonetics"
+    career_url: "https://resonetics.com/careers/"
+
+  - company: "Cirtronics Corporation"
+    career_url: "https://www.cirtronics.com/careers/join-our-team/"
+
+  - company: "Zentech Manufacturing"
+    career_url: "https://www.zentech.com/careers"
+
+  - company: "Firstronic LLC"
+    career_url: "https://firstronic.com/Careers.html"
+
+  - company: "SMTC Corporation"
+    career_url: "https://www.smtc.com/about/careers"
+
+  - company: "Key Tronic Corporation"
+    career_url: "https://www.keytronic.com/join-us/"
+
+  - company: "NN, Inc."
+    career_url: "https://www.nninc.com/about/careers/"
+
+  - company: "Group Dekko"
+    career_url: "https://www.dekko.com/careers/"

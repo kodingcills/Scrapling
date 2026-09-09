@@ -67,6 +67,29 @@ def test_extract_roles_classifies():
     assert "Benefits" not in by_title
 
 
+# Real false positive from a live run against Creation Technologies'
+# careers page: a "Related Insights" blog teaser on the page linked to a
+# wpengine-hosted article whose title contained "procurement", matching
+# JOB_LINK_TEXT_HINTS, and got synced to Notion as a lead. The teaser link
+# points off-domain (creationtech2.wpenginepowered.com, not
+# creationtech.com) exactly like a real ATS redirect would, so a
+# same-domain check would be the wrong fix - the actual signal is that the
+# text is an editorial headline (colon, 60 chars), not a job title.
+CREATION_TECH_BLOG_TEASER_HTML = """
+<h1>Careers</h1>
+<a href="/jobs/quality-engineer">Quality Engineer</a>
+<a href="https://creationtech2.wpenginepowered.com/design-for-procurement-a-strategic-approach-to-long-term-cost-optimization-and-risk-mitigation/">Design for Procurement: A Strategic and Proactive Approach</a>
+"""
+
+
+def test_extract_roles_rejects_blog_teaser_false_positive():
+    response = _fake_response(CREATION_TECH_BLOG_TEASER_HTML)
+    roles = extract_roles(response, company="Creation Technologies")
+    titles = {role.title for role in roles}
+    assert "Quality Engineer" in titles
+    assert not any(title.startswith("Design for Procurement") for title in titles)
+
+
 def test_extract_directory_entries():
     entries = extract_directory_entries(_fake_response(DIRECTORY_HTML))
     names = {entry["name"] for entry in entries}

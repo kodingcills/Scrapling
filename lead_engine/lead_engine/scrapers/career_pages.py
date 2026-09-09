@@ -43,13 +43,28 @@ def find_career_links(html: str, base_url: str = "") -> List[str]:
     return sorted(links)
 
 
+def _looks_like_job_title(title: str) -> bool:
+    """Reject link text that reads as an editorial headline rather than a
+    job title. Real postings are short noun phrases ("Quality Engineer",
+    "Senior Buyer") - every title in the live career-page fixtures is under
+    50 characters and none contain a colon. A real false positive from a
+    "Related Insights" blog teaser on a career page ("Design for
+    Procurement: A Strategic and Proactive Approach...") had a colon and
+    ran to 97 characters, and was caught by the JOB_LINK_TEXT_HINTS keyword
+    match ("procurement") despite not being a job posting at all - the
+    keyword match alone isn't enough, the candidate also has to look
+    title-shaped. This is a shape check, not a vendor/content blocklist, so
+    it stays generic across career-page platforms."""
+    return len(title) <= 70 and ":" not in title
+
+
 def extract_roles(response: Response, company: str = "") -> List[Role]:
     """Extract job postings from a career page's HTML."""
     roles: Dict[str, Role] = {}
     base_url = response.url or ""
     for anchor in response.css("a"):
         title = " ".join((anchor.text or "").split())
-        if not title or len(title) > 120:
+        if not title or not _looks_like_job_title(title):
             continue
         lowered = title.lower()
         if any(kw in lowered for kw in JOB_LINK_TEXT_HINTS):

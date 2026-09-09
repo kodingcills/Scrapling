@@ -13,6 +13,12 @@
 # Carlisle Companies subsidiary - not mid-size independent), Interplex
 # (Singapore HQ, not US-based), Minnetronix Medical (careers URL 404'd,
 # needs a manual check before adding).
+#
+# Dropped after the first real `targets` run (2026-09-09): Firstronic LLC
+# (firstronic.com 302-redirects to a GoDaddy "domain for sale" parking
+# page - confirmed independently, not a scraper fluke - the domain has
+# lapsed; if the company still operates under a different domain, re-add
+# it with the correct URL).
 
 targets:
   - company: "Creation Technologies"
@@ -41,9 +47,6 @@ targets:
 
   - company: "Zentech Manufacturing"
     career_url: "https://www.zentech.com/careers"
-
-  - company: "Firstronic LLC"
-    career_url: "https://firstronic.com/Careers.html"
 
   - company: "SMTC Corporation"
     career_url: "https://www.smtc.com/about/careers"

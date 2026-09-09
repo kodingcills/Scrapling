@@ -5,6 +5,7 @@ dependencies; the transport is injectable for tests.
 """
 
 import json
+import re
 from typing import Any, Dict, Optional
 
 from scrapling.core.utils import log
@@ -69,6 +70,27 @@ def build_properties(lead: Lead) -> Dict[str, Any]:
 build_lead_properties = build_properties
 
 
+def normalize_notion_id(raw: str) -> str:
+    """Accept a bare UUID (dashed or not) or a full page/database URL
+    pasted from the browser address bar, and return a standard dashed
+    UUID.
+
+    Real mistake this guards against: NOTION_DATABASE_ID was set to
+    "https://app.notion.com/p/63f8848d11c04873926a9c44530f60c9..." instead
+    of the bare id - an easy paste error since the browser address bar is
+    the most natural place to grab a database id from, and Notion's API
+    rejects it outright ("parent.database_id should be a valid uuid").
+    Strip all dashes/slug text and pull the first 32 contiguous hex
+    characters, then re-insert standard UUID dashes.
+    """
+    raw = raw.strip()
+    match = re.search(r"[0-9a-fA-F]{32}", raw.replace("-", ""))
+    if not match:
+        return raw  # not id-shaped at all; let Notion's own error surface
+    hex32 = match.group(0)
+    return f"{hex32[0:8]}-{hex32[8:12]}-{hex32[12:16]}-{hex32[16:20]}-{hex32[20:32]}"
+
+
 class NotionClient:
     """Thin Notion REST client for the single "Precision Assembly Leads" database."""
 
@@ -78,7 +100,7 @@ class NotionClient:
         :param database_id: The leads database to sync into.
         :param transport: Callable(method, url, headers, body) -> (status, body); defaults to urllib.
         """
-        self.database_id = database_id
+        self.database_id = normalize_notion_id(database_id)
         self._token = token
         self._transport = transport or self._default_transport
 

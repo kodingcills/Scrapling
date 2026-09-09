@@ -7,6 +7,7 @@ from lead_engine.notion_sync.client import (
     SOURCE_TYPE_NOTION_MAP,
     NotionClient,
     build_properties,
+    normalize_notion_id,
 )
 
 
@@ -97,6 +98,40 @@ class RecordingTransport:
             page_id = self.existing_page_id or ""
             return 200, {"id": page_id}
         return 201, {"id": "created-page-1"}
+
+
+def test_normalize_notion_id_accepts_bare_and_dashed_uuid():
+    bare = "63f8848d11c04873926a9c44530f60c9"
+    dashed = "63f8848d-11c0-4873-926a-9c44530f60c9"
+    assert normalize_notion_id(bare) == dashed
+    assert normalize_notion_id(dashed) == dashed
+
+
+def test_normalize_notion_id_extracts_from_pasted_urls():
+    """Real bug: NOTION_DATABASE_ID was set to the full browser URL instead
+    of the bare id, and the raw string reached Notion's API unparsed -
+    parent.database_id must be a valid uuid, so every create failed with a
+    400 the first time this project ever attempted a real Notion write."""
+    expected = "63f8848d-11c0-4873-926a-9c44530f60c9"
+    assert normalize_notion_id("https://app.notion.com/p/63f8848d11c04873926a9c44530f60c9") == expected
+    assert (
+        normalize_notion_id(
+            "https://www.notion.so/Precision-Assembly-Leads-63f8848d11c04873926a9c44530f60c9?v=abc123"
+        )
+        == expected
+    )
+
+
+def test_normalize_notion_id_passes_through_non_id_strings():
+    """A test fixture id like "db-id" has no 32-hex-char run - must not be
+    mangled, just passed through so Notion's own error (not ours) surfaces
+    if it's ever genuinely wrong."""
+    assert normalize_notion_id("db-id") == "db-id"
+
+
+def test_notion_client_normalizes_database_id_pasted_as_url():
+    client = NotionClient("secret", "https://app.notion.com/p/63f8848d11c04873926a9c44530f60c9")
+    assert client.database_id == "63f8848d-11c0-4873-926a-9c44530f60c9"
 
 
 def test_upsert_lead_updates_in_place_by_source_url():

@@ -14,10 +14,15 @@ def _subject(command: str, counts: Dict[str, int]) -> str:
     return f"[lead-engine] {command}: {summary}"
 
 
-def _body(command: str, counts: Dict[str, int], errors: Optional[List[str]]) -> str:
+def _body(command: str, counts: Dict[str, int], errors: Optional[List[str]], leads: Optional[List[Dict[str, str]]] = None) -> str:
     lines = [f"lead_engine run finished: {command}", ""]
     for key, value in counts.items():
         lines.append(f"{key}: {value}")
+    if leads:
+        lines.append("")
+        lines.append(f"leads ({len(leads)}):")
+        for lead in leads:
+            lines.append(f"  - {lead['company']} | {lead['title_role']} | {lead['contact_name']} | {lead['email']}")
     if errors:
         lines.append("")
         lines.append(f"errors ({len(errors)}):")
@@ -28,9 +33,19 @@ def _body(command: str, counts: Dict[str, int], errors: Optional[List[str]]) -> 
     return "\n".join(lines)
 
 
-def send_run_summary(command: str, counts: Dict[str, int], errors: Optional[List[str]] = None) -> None:
+def send_run_summary(
+    command: str,
+    counts: Dict[str, int],
+    errors: Optional[List[str]] = None,
+    leads: Optional[List[Dict[str, str]]] = None,
+) -> None:
     """Email a short run summary. Never raises: notification failures are
     logged and swallowed so they can't fail the underlying pipeline command.
+
+    `leads` optionally carries per-lead detail dicts (company, title_role,
+    contact_name, email) so a human can see actual names instead of counts;
+    a lead with no contact found shows "(not found)" and one that was never
+    enriched shows its contact_status (e.g. "not_attempted").
 
     No-ops when SMTP isn't configured (settings.notifications_configured).
     """
@@ -42,7 +57,7 @@ def send_run_summary(command: str, counts: Dict[str, int], errors: Optional[List
     message["Subject"] = _subject(command, counts)
     message["From"] = settings.smtp_from_address
     message["To"] = settings.notify_to_address
-    message.set_content(_body(command, counts, errors))
+    message.set_content(_body(command, counts, errors, leads))
 
     try:
         with smtplib.SMTP(settings.smtp_host, settings.smtp_port, timeout=30) as server:

@@ -234,6 +234,10 @@ def cmd_targets(args: argparse.Namespace) -> int:
     save_leads(out_path, all_leads)
     log.info(f"Saved {len(all_leads)} total lead(s) -> {out_path}")
 
+    for lead in all_leads:
+        contact = lead.contact_name or "(no contact found)"
+        log.info(f"[{lead.company}] {lead.title_role}: {contact} - {lead.email or lead.contact_status}")
+
     synced = 0 if args.no_sync else _sync_leads(all_leads)
     send_run_summary(
         "targets",
@@ -248,6 +252,15 @@ def cmd_targets(args: argparse.Namespace) -> int:
             "errors": len(per_company_errors),
         },
         errors=per_company_errors or None,
+        leads=[
+            {
+                "company": lead.company,
+                "title_role": lead.title_role,
+                "contact_name": lead.contact_name or "(not found)",
+                "email": lead.email or lead.contact_status,
+            }
+            for lead in all_leads
+        ],
     )
     return 0
 

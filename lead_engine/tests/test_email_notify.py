@@ -92,3 +92,29 @@ def test_subject_and_body_formatting():
     assert _subject("sync-jsonl", counts) == "[lead-engine] sync-jsonl: 3 created, 1 updated, 2 errors"
     body = _body("sync-jsonl", counts, ["boom one", "boom two"])
     assert "errors (2):" in body and "- boom one" in body
+
+
+def test_body_lists_per_lead_detail():
+    body = _body(
+        "targets",
+        {"extracted": 2, "enriched": 1},
+        None,
+        leads=[
+            {
+                "company": "Acme",
+                "title_role": "Quality Engineer",
+                "contact_name": "Ravi Patel",
+                "email": "ravi@acme.example.com",
+            },
+            {
+                "company": "Beta",
+                "title_role": "Process Engineer",
+                "contact_name": "(not found)",
+                "email": "not_attempted",
+            },
+        ],
+    )
+    assert "leads (2):" in body
+    assert "- Acme | Quality Engineer | Ravi Patel | ravi@acme.example.com" in body
+    # a lead the cap or --no-enrich skipped says so plainly, no blank email
+    assert "- Beta | Process Engineer | (not found) | not_attempted" in body

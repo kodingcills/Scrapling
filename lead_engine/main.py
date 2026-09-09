@@ -114,6 +114,53 @@ def _load_targets(path: Path) -> list:
     return targets
 
 
+def _merge_existing_state(lead: Lead, existing: Lead) -> None:
+    """Carry Notion's enrichment/draft state onto a freshly-scraped copy of
+    the same lead so re-syncing it can't blank out fields the scrape didn't
+    just compute (email, contact status, generated draft, contact name)."""
+    if existing.email:
+        lead.email = existing.email
+    if existing.contact_name and not lead.contact_name:
+        lead.contact_name = existing.contact_name
+        lead.is_named = True
+    if existing.contact_status and existing.contact_status != "not_attempted":
+        lead.contact_status = existing.contact_status
+    if existing.status and existing.status != "New":
+        lead.status = existing.status
+    if existing.generated_draft:
+        lead.generated_draft = existing.generated_draft
+
+
+def _split_seen_vs_new(leads: list) -> tuple:
+    """Split leads into (already_seen, new) by looking their Source URLs up
+    in Notion. already_seen leads keep whatever enrichment/draft state
+    Notion already has; only genuinely new leads are worth Findymail
+    credits. Without Notion there is no dedup, so everything counts as new
+    and the --max-enrich cap remains the only credit guard."""
+    if not (settings.notion_token and settings.notion_database_id):
+        log.warning(
+            "NOTION_TOKEN / NOTION_DATABASE_ID not set; cannot dedup against Notion - "
+            "treating every lead as new (credit cap still applies)"
+        )
+        return [], list(leads)
+    from lead_engine.notion_sync.client import NotionClient
+
+    client = NotionClient(settings.notion_token, settings.notion_database_id)
+    already_seen, new_leads = [], []
+    for lead in leads:
+        try:
+            existing = client.get_existing_lead(lead.source_url)
+        except Exception as error:  # noqa: BLE001 - a lookup failure must not kill the batch
+            log.warning(f"Notion lookup failed for {lead.source_url or lead.company} ({error}); treating as new")
+            existing = None
+        if existing:
+            _merge_existing_state(lead, existing)
+            already_seen.append(lead)
+        else:
+            new_leads.append(lead)
+    return already_seen, new_leads
+
+
 def cmd_targets(args: argparse.Namespace) -> int:
     from lead_engine.scrapers import career_pages, team_pages
 
@@ -151,6 +198,39 @@ def cmd_targets(args: argparse.Namespace) -> int:
                 per_company_errors.append(f"{company} ({label}): {error}")
 
     out_path = Path(args.out) if args.out else _default_out("targets")
+
+    already_seen_count = 0
+    new_count = len(all_leads)
+    enriched_valid = 0
+    skipped_by_cap = 0
+    if not args.no_enrich and all_leads:
+        already_seen, new_leads = _split_seen_vs_new(all_leads)
+        already_seen_count = len(already_seen)
+        new_count = len(new_leads)
+        to_enrich = new_leads
+        if len(new_leads) > args.max_enrich:
+            skipped_by_cap = len(new_leads) - args.max_enrich
+            to_enrich = new_leads[: args.max_enrich]
+            log.warning(
+                f"{skipped_by_cap} new lead(s) over the --max-enrich cap of {args.max_enrich}; "
+                f"skipping their Findymail calls this run, they'll be picked up on a future run"
+            )
+        if to_enrich:
+            from lead_engine.enrichment.waterfall import FindymailClient, FindymailError, enrich_batch
+
+            try:
+                client = FindymailClient()
+            except ValueError as error:
+                log.error(str(error))
+                return 1
+            try:
+                log.info(f"Findymail credit balance before enrichment: {client.credits()}")
+            except FindymailError as error:
+                log.warning(f"Could not read Findymail credit balance: {error}")
+            to_enrich = enrich_batch(to_enrich, client)
+            enriched_valid = sum(1 for lead in to_enrich if lead.contact_status in ("valid", "uncertain"))
+            log.info(f"Enriched {enriched_valid}/{len(to_enrich)} new lead(s) with a contact email")
+        all_leads = already_seen + to_enrich + new_leads[len(to_enrich):]
     save_leads(out_path, all_leads)
     log.info(f"Saved {len(all_leads)} total lead(s) -> {out_path}")
 
@@ -160,6 +240,10 @@ def cmd_targets(args: argparse.Namespace) -> int:
         {
             "companies": len(targets),
             "extracted": len(all_leads),
+            "new": new_count,
+            "already_seen": already_seen_count,
+            "enriched": enriched_valid,
+            "skipped_cap": skipped_by_cap,
             "synced": synced,
             "errors": len(per_company_errors),
         },
@@ -346,6 +430,17 @@ def main(argv=None) -> int:
     targets_parser.add_argument("targets_file", help="Path to a targets YAML file (see data/target_companies.yaml)")
     targets_parser.add_argument("--out", default=None, help="Output jsonl path (default: data/leads_targets_<ts>.jsonl)")
     targets_parser.add_argument("--no-sync", action="store_true", help="Skip pushing to Notion")
+    targets_parser.add_argument(
+        "--no-enrich",
+        action="store_true",
+        help="Skip Findymail enrichment entirely (scrape-only dry run, zero credits)",
+    )
+    targets_parser.add_argument(
+        "--max-enrich",
+        type=int,
+        default=10,
+        help="Hard cap on leads enriched with Findymail in one run (default: 10)",
+    )
     targets_parser.set_defaults(func=cmd_targets)
 
     cp_parser = subparsers.add_parser("career-pages", help="Scrape one career page for target-role postings")

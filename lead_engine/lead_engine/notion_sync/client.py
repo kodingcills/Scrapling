@@ -10,7 +10,11 @@ from typing import Any, Dict, Optional
 
 from scrapling.core.utils import log
 
-from lead_engine.models import Lead
+from lead_engine.models import (
+    CONTACT_STATUS_OPTIONS,
+    STATUS_OPTIONS,
+    Lead,
+)
 
 API_BASE = "https://api.notion.com/v1"
 NOTION_VERSION = "2022-06-28"
@@ -141,6 +145,55 @@ class NotionClient:
         if not source_url:
             return None
         return self._query_id("Source URL", {"url": {"equals": source_url}})
+
+    def get_existing_lead(self, source_url: str) -> Optional[Lead]:
+        """Return the Notion-stored enrichment/draft state for a lead, or
+        None when no row with this Source URL exists.
+
+        Reuses the same Source-URL lookup upsert_lead() dedups by — this is
+        the credit-discipline gate: callers split leads into new vs
+        already-seen BEFORE spending Findymail credits. The returned Lead
+        only carries the fields a fresh scrape doesn't have (email,
+        contact status, generated draft, contact name) so callers can
+        re-sync without blanking out state they didn't just compute.
+        """
+        page_id = self.find_lead_by_source_url(source_url)
+        if not page_id:
+            return None
+        status, data = self._call("GET", f"/pages/{page_id}")
+        if status != 200:
+            log.warning(f"Notion page fetch failed for {page_id} (status {status}); treating lead as not seen")
+            return None
+        properties = data.get("properties", {})
+
+        def _select(name: str) -> str:
+            value = properties.get(name, {}).get("select")
+            return value.get("name", "") if value else ""
+
+        def _rich_text(name: str) -> str:
+            pieces = properties.get(name, {}).get("rich_text") or []
+            return "".join(piece.get("plain_text", "") for piece in pieces)
+
+        def _title(name: str) -> str:
+            pieces = properties.get(name, {}).get("title") or []
+            return "".join(piece.get("plain_text", "") for piece in pieces)
+
+        contact_status = _select("Contact Status")
+        if contact_status not in CONTACT_STATUS_OPTIONS:
+            contact_status = ""
+        status = _select("Status")
+        if status not in STATUS_OPTIONS:
+            status = ""
+        contact_name = _title("Lead Name")
+        return Lead(
+            source_url=source_url,
+            contact_name=contact_name,
+            is_named=bool(contact_name),
+            email=properties.get("Email", {}).get("email") or "",
+            contact_status=contact_status or "not_attempted",
+            status=status or "New",
+            generated_draft=_rich_text("Generated Draft"),
+        )
 
     def upsert_lead(self, lead: Lead) -> str:
         """Create or update (in place, deduped by Source URL) a lead row.

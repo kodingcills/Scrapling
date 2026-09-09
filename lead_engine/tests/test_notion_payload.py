@@ -154,3 +154,59 @@ def test_upsert_lead_creates_when_no_match():
     assert page_id == "created-page-1"
     create_call = next(c for c in transport.calls if c[0] == "POST" and c[1].endswith("/pages"))
     assert create_call[2]["properties"]["Status"] == {"select": {"name": "Drafted"}}
+
+
+def _properties_transport(properties):
+    def transport(method, url, headers, body):
+        if "/query" in url:
+            return 200, {"results": [{"id": "row-42"}]}
+        if method == "GET" and url.endswith("/pages/row-42"):
+            return 200, {"properties": properties}
+        raise AssertionError(f"unexpected call {method} {url}")
+
+    return transport
+
+
+def test_get_existing_lead_maps_enrichment_state_back():
+    transport = _properties_transport(
+        {
+            "Lead Name": {"title": [{"plain_text": "Pat Kim"}]},
+            "Email": {"email": "pat@seenco.example.com"},
+            "Contact Status": {"select": {"name": "valid"}},
+            "Status": {"select": {"name": "Reviewed"}},
+            "Generated Draft": {"rich_text": [{"plain_text": "Subject: hi\n\nbody"}]},
+        }
+    )
+    client = NotionClient("secret", "db-id", transport=transport)
+    existing = client.get_existing_lead("https://seenco.example.com/careers/a")
+    assert existing is not None
+    assert existing.email == "pat@seenco.example.com"
+    assert existing.contact_status == "valid"
+    assert existing.status == "Reviewed"
+    assert existing.contact_name == "Pat Kim"
+    assert existing.is_named is True
+    assert existing.generated_draft.startswith("Subject:")
+
+
+def test_get_existing_lead_returns_none_when_not_found():
+    def no_match_transport(method, url, headers, body):
+        assert "/query" in url
+        return 200, {"results": []}
+
+    client = NotionClient("secret", "db-id", transport=no_match_transport)
+    assert client.get_existing_lead("https://unknown.example.com/x") is None
+
+
+def test_get_existing_lead_tolerates_invalid_select_values():
+    """A hand-edited Notion row must not crash the pipeline: invalid select
+    values fall back to Lead defaults instead of tripping the validators."""
+    transport = _properties_transport(
+        {
+            "Contact Status": {"select": {"name": "hand-edited-garbage"}},
+            "Status": {"select": {"name": "also-garbage"}},
+        }
+    )
+    client = NotionClient("secret", "db-id", transport=transport)
+    existing = client.get_existing_lead("https://seenco.example.com/careers/a")
+    assert existing.contact_status == "not_attempted"
+    assert existing.status == "New"
